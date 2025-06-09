@@ -1,29 +1,44 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>POS System</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>POS</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    h1 { text-align: center; }
+    .menu-item { margin: 10px; padding: 10px; border: 1px solid #ccc; display: flex; justify-content: space-between; align-items: center; }
+    .menu-list { max-width: 400px; margin: 0 auto; }
+    .controls { text-align: center; margin-bottom: 20px; }
+    .sales-log { margin-top: 30px; max-width: 600px; margin: 30px auto 0; }
+    .sales-log table { width: 100%; border-collapse: collapse; }
+    .sales-log th, .sales-log td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+    .btn { cursor: pointer; padding: 6px 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; margin: 5px; }
+  </style>
 </head>
 <body>
-  <!-- 결제 방식 선택 -->
-  <div>
+  <div class="controls">
     <label><input type="radio" name="paymentMethod" value="Cash" checked> Cash</label>
-    <label><input type="radio" name="paymentMethod" value="Bank Transfer"> Bank Transfer</label>
+    <label><input type="radio" name="paymentMethod" value="Bank Transfer"> Transfer</label>
     <label><input type="radio" name="paymentMethod" value="Online"> Online</label>
+    <br>
+    <button class="btn" onclick="checkout()">Sell</button>
   </div>
 
-  <!-- 메뉴 -->
-  <div id="menu"></div>
+  <div class="menu-list" id="menuList"></div>
 
-  <!-- 판매 버튼 -->
-  <button onclick="sellItems()">Sell</button>
-
-  <!-- 로그 -->
-  <div id="log"></div>
+  <div class="sales-log">
+    <h2>Sales Log</h2>
+    <table>
+      <thead>
+        <tr><th>Time</th><th>Item</th><th>Qty</th><th>Total</th><th>Payment</th></tr>
+      </thead>
+      <tbody id="logBody"></tbody>
+    </table>
+  </div>
 
   <script>
-    const menuItems = [
+    const menu = [
       { name: "Mix Kimbap", price: 79 },
       { name: "Original Kimbap", price: 79 },
       { name: "ham cheese kimbap", price: 79 },
@@ -38,27 +53,36 @@
 
     const sheetURL = "https://script.google.com/macros/s/AKfycbz8dfRn6lyjW9t0hJmolBEKFUp2jgTwTjoZtTD5N5o-D2pvZK5Ah9FMd6vWovg50vQUfQ/exec";
 
-    const menuDiv = document.getElementById('menu');
-    const logDiv = document.getElementById('log');
+    const menuList = document.getElementById('menuList');
+    const logBody = document.getElementById('logBody');
 
-    menuItems.forEach(item => {
-      const container = document.createElement("div");
-      container.innerHTML = `
-        ${item.name} (${item.price}฿): 
-        <input type="number" id="${item.name}" min="0" value="0" style="width: 50px;" />
+    menu.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'menu-item';
+      div.innerHTML = `
+        <span>${item.name}</span>
+        <input type="number" min="0" value="0" id="qty-${item.name}" style="width:60px;" />
       `;
-      menuDiv.appendChild(container);
+      menuList.appendChild(div);
     });
 
-    function sellItems() {
-      const payment = document.querySelector('input[name="paymentMethod"]:checked').value;
-      menuItems.forEach(item => {
-        const qty = parseInt(document.getElementById(item.name).value);
+    function checkout() {
+      let selectedPayment = document.querySelector('input[name="paymentMethod"]:checked').value;
+      let now = new Date().toLocaleTimeString();
+      menu.forEach(item => {
+        const qty = parseInt(document.getElementById(`qty-${item.name}`).value);
         if (qty > 0) {
-          const price = item.price;
-          const total = qty * price;
+          const price = (item.name.includes("Kimbap") || item.name.includes("Bibimbap")) && qty >= 2 ? 75 : item.price;
+          const total = price * qty;
 
-          // Google Sheet에 전송
+          // 로그 출력
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${now}</td><td>${item.name}</td><td>${qty}</td><td>${total}</td><td>${selectedPayment}</td>
+          `;
+          logBody.appendChild(row);
+
+          // Google Sheet 전송
           fetch(sheetURL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -67,20 +91,13 @@
               qty: qty,
               unit_price: price,
               total_price: total,
-              payment: payment
+              payment: selectedPayment
             })
           });
 
-          // 화면에 로그 표시
-          const p = document.createElement("p");
-          p.textContent = `${item.name} x${qty} = ${total}฿ (${payment})`;
-          logDiv.appendChild(p);
+          // 입력 초기화
+          document.getElementById(`qty-${item.name}`).value = 0;
         }
-      });
-
-      // 입력값 초기화
-      menuItems.forEach(item => {
-        document.getElementById(item.name).value = 0;
       });
     }
   </script>
