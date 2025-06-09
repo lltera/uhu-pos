@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>POS</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
@@ -18,6 +18,7 @@
   </style>
 </head>
 <body>
+
   <div class="controls">
     <label><input type="radio" name="paymentMethod" value="Cash" checked> Cash</label>
     <label><input type="radio" name="paymentMethod" value="Bank Transfer"> Transfer</label>
@@ -32,7 +33,7 @@
     <h2>Sales Log</h2>
     <table>
       <thead>
-        <tr><th>Time</th><th>Items</th><th>Qty</th><th>Total</th><th>Payment</th></tr>
+        <tr><th>Time</th><th>Item</th><th>Qty</th><th>Total</th><th>Payment</th></tr>
       </thead>
       <tbody id="logBody"></tbody>
     </table>
@@ -55,7 +56,7 @@
     const qtyMap = {};
     menu.forEach(item => qtyMap[item.name] = 0);
 
-    const sheetURL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec";
+    const sheetURL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec"; // 🔁 여기에 스크립트 URL 붙여넣기
 
     const menuList = document.getElementById('menuList');
     const logBody = document.getElementById('logBody');
@@ -81,54 +82,57 @@
 
     function checkout() {
       let selectedPayment = document.querySelector('input[name="paymentMethod"]:checked').value;
-      let now = new Date().toLocaleString();
-      let items = {};
+      let now = new Date().toLocaleTimeString();
+      let orderItems = {};
       let totalQty = 0;
       let totalPrice = 0;
       let notes = [];
 
-      let kimbapCount = 0;
-      menu.forEach(item => {
+      const soupItems = ["kimchi soup", "seaweed soup"];
+
+      let mainCount = 0;
+      for (let item of menu) {
+        const qty = qtyMap[item.name];
+        if (qty > 0 && (item.name.toLowerCase().includes("kimbap") || item.name.toLowerCase().includes("bibimbap"))) {
+          mainCount += qty;
+        }
+      }
+
+      for (let item of menu) {
         const qty = qtyMap[item.name];
         if (qty > 0) {
-          items[item.name] = qty;
-          totalQty += qty;
-          if ((item.name.includes("Kimbap") || item.name.includes("Bibimbap"))) {
-            kimbapCount += qty;
+          const name = item.name;
+          const lname = name.toLowerCase();
+          let unitPrice = item.price;
+
+          if ((lname.includes("kimbap") || lname.includes("bibimbap")) && mainCount >= 2) {
+            unitPrice = 75;
+            notes.push(`${name} → 75B`);
           }
+
+          if (soupItems.includes(lname) && mainCount >= 1) {
+            unitPrice -= 10;
+            notes.push(`${name} → -10B`);
+          }
+
+          orderItems[name] = qty;
+          totalQty += qty;
+          totalPrice += unitPrice * qty;
+
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${now}</td><td>${name}</td><td>${qty}</td><td>${unitPrice * qty}</td><td>${selectedPayment}</td>
+          `;
+          logBody.appendChild(row);
         }
-      });
-
-      Object.keys(items).forEach(name => {
-        let qty = items[name];
-        let basePrice = menu.find(i => i.name === name).price;
-        let price = basePrice;
-
-        if ((name.includes("Kimbap") || name.includes("Bibimbap")) && kimbapCount >= 2) {
-          price = 75;
-          notes.push(`${name} → 75B`);
-        }
-
-        if ((name.includes("Soup")) && kimbapCount >= 1) {
-          price = basePrice - 10;
-          notes.push(`${name} → -10B`);
-        }
-
-        totalPrice += price * qty;
-      });
-
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>${now}</td><td>${JSON.stringify(items)}</td><td>${totalQty}</td><td>${totalPrice}</td><td>${selectedPayment}</td>
-      `;
-      logBody.appendChild(row);
+      }
 
       fetch(sheetURL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          timestamp: now,
-          items: JSON.stringify(items),
+          timestamp: new Date().toISOString(),
+          items: JSON.stringify(orderItems),
           totalQty: totalQty,
           totalPrice: totalPrice,
           payment: selectedPayment,
@@ -136,10 +140,10 @@
         })
       });
 
-      Object.keys(qtyMap).forEach(name => {
-        qtyMap[name] = 0;
-        document.getElementById(`qty-${name}`).innerText = 0;
-      });
+      for (let item of menu) {
+        qtyMap[item.name] = 0;
+        document.getElementById(`qty-${item.name}`).innerText = 0;
+      }
     }
   </script>
 </body>
