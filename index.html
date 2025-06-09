@@ -10,9 +10,9 @@
     .menu-grid { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; max-width: 600px; margin: 0 auto; }
     .menu-item { flex: 1 1 45%; padding: 5px; border: 1px solid #ccc; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
     .controls { text-align: center; margin-bottom: 20px; }
-    .sales-log { margin-top: 30px; max-width: 600px; margin: 30px auto 0; }
-    .sales-log table { width: 100%; border-collapse: collapse; }
-    .sales-log th, .sales-log td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+    .sales-log, .summary-log { margin-top: 30px; max-width: 600px; margin-left: auto; margin-right: auto; }
+    .sales-log table, .summary-log table { width: 100%; border-collapse: collapse; }
+    .sales-log th, .sales-log td, .summary-log th, .summary-log td { border: 1px solid #ccc; padding: 8px; text-align: center; }
     .btn { cursor: pointer; padding: 6px 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; margin: 2px; font-size: 14px; }
     .qty-controls { display: flex; align-items: center; gap: 5px; }
     .qty-btn { width: 21px; height: 21px; font-size: 12px; }
@@ -33,9 +33,19 @@
     <h2>Sales Log</h2>
     <table>
       <thead>
-        <tr><th>Time</th><th>Item</th><th>Qty</th><th>Unit</th><th>Total</th><th>Payment</th></tr>
+        <tr><th>#</th><th>Time</th><th>Item</th><th>Qty</th><th>Total</th><th>Payment</th></tr>
       </thead>
       <tbody id="logBody"></tbody>
+    </table>
+  </div>
+
+  <div class="summary-log">
+    <h2>Daily Summary</h2>
+    <table>
+      <thead>
+        <tr><th>Item</th><th>Total Sold</th></tr>
+      </thead>
+      <tbody id="summaryBody"></tbody>
     </table>
   </div>
 
@@ -54,12 +64,18 @@
     ];
 
     const qtyMap = {};
-    menu.forEach(item => qtyMap[item.name] = 0);
+    const soldCount = {};
+    menu.forEach(item => {
+      qtyMap[item.name] = 0;
+      soldCount[item.name] = 0;
+    });
 
-    const sheetURL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec"; // Replace with your actual Script URL
+    const sheetURL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec";
 
     const menuList = document.getElementById('menuList');
     const logBody = document.getElementById('logBody');
+    const summaryBody = document.getElementById('summaryBody');
+    let customerCounter = 1;
 
     menu.forEach(item => {
       const div = document.createElement('div');
@@ -80,17 +96,27 @@
       document.getElementById(`qty-${name}`).innerText = qtyMap[name];
     }
 
+    function updateSummary() {
+      summaryBody.innerHTML = '';
+      Object.keys(soldCount).forEach(name => {
+        const row = document.createElement('tr');
+        row.innerHTML = `<td>${name}</td><td>${soldCount[name]}</td>`;
+        summaryBody.appendChild(row);
+      });
+    }
+
     function checkout() {
       let selectedPayment = document.querySelector('input[name="paymentMethod"]:checked').value;
-      let now = new Date().toLocaleTimeString();
-      let hasOrder = false;
+      let now = new Date();
+      let time = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+      let itemsSold = false;
 
       menu.forEach(item => {
         const qty = qtyMap[item.name];
-        if (qty > 0) hasOrder = true;
+        if (qty > 0) itemsSold = true;
       });
 
-      if (!hasOrder) {
+      if (!itemsSold) {
         alert("Please select at least one item.");
         return;
       }
@@ -99,32 +125,25 @@
         const qty = qtyMap[item.name];
         if (qty > 0) {
           let price = item.price;
-
-          if ((item.name.includes("Kimbap") || item.name.includes("Bibimbap")) && qty >= 2) {
-            price = 75;
+          if ((item.name.includes("Kimbap") || item.name === "Bibimbap") && qty >= 2) price = 75;
+          if ((item.name === "Kimchi Soup" && (qtyMap["Bibimbap"] > 0 || Object.keys(qtyMap).some(k => k.includes("Kimbap") && qtyMap[k] > 0))) ||
+              (item.name === "Seaweed Soup" && (qtyMap["Bibimbap"] > 0 || Object.keys(qtyMap).some(k => k.includes("Kimbap") && qtyMap[k] > 0)))) {
+            price -= 10;
           }
-
-          if ((item.name.includes("Soup")) && hasAnyKimbapOrBibimbap()) {
-            price = item.name.includes("Kimchi") ? 40 : item.name.includes("Seaweed") ? 30 : price;
-          }
-
           const total = price * qty;
+
           const row = document.createElement('tr');
-          row.innerHTML = `
-            <td>${now}</td>
-            <td>${item.name}</td>
-            <td>${qty}</td>
-            <td>${price}</td>
-            <td>${total}</td>
-            <td>${selectedPayment}</td>
-          `;
+          row.innerHTML = `<td>${customerCounter}</td><td>${time}</td><td>${item.name}</td><td>${qty}</td><td>${total}</td><td>${selectedPayment}</td>`;
           logBody.appendChild(row);
+
+          soldCount[item.name] += qty;
 
           fetch(sheetURL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              time: now,
+              customer: customerCounter,
+              time: time,
               item: item.name,
               qty: qty,
               unit_price: price,
@@ -137,10 +156,8 @@
           document.getElementById(`qty-${item.name}`).innerText = 0;
         }
       });
-    }
-
-    function hasAnyKimbapOrBibimbap() {
-      return Object.keys(qtyMap).some(name => (name.includes("Kimbap") || name.includes("Bibimbap")) && qtyMap[name] > 0);
+      updateSummary();
+      customerCounter++;
     }
   </script>
 </body>
