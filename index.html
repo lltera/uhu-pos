@@ -6,6 +6,7 @@
   <title>POS</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
+    h1 { text-align: center; }
     .menu-grid { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; max-width: 600px; margin: 0 auto; }
     .menu-item { flex: 1 1 45%; padding: 5px; border: 1px solid #ccc; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
     .controls { text-align: center; margin-bottom: 20px; }
@@ -32,7 +33,7 @@
     <h2>Sales Log</h2>
     <table>
       <thead>
-        <tr><th>Time</th><th>Item</th><th>Qty</th><th>Total</th><th>Payment</th></tr>
+        <tr><th>Time</th><th>Summary</th><th>Payment</th><th>Notes</th></tr>
       </thead>
       <tbody id="logBody"></tbody>
     </table>
@@ -80,72 +81,69 @@
     }
 
     function checkout() {
-      let selectedPayment = document.querySelector('input[name="paymentMethod"]:checked').value;
-      let now = new Date().toLocaleTimeString();
-      let orderItems = {};
+      const selectedPayment = document.querySelector('input[name="paymentMethod"]:checked').value;
+      const now = new Date().toLocaleTimeString();
+
+      const items = {};
       let totalQty = 0;
       let totalPrice = 0;
       let notes = [];
 
-      const soupItems = ["kimchi soup", "seaweed soup"];
-      const kimbapItems = menu.filter(item => item.name.toLowerCase().includes("kimbap") || item.name.toLowerCase().includes("bibimbap"));
+      let kimbapAndBibimbapQty = 0;
+      const soupItems = ["Kimchi Soup", "Seaweed Soup"];
+      let hasKimbapOrBibimbap = false;
 
-      let mainCount = 0;
-      kimbapItems.forEach(item => {
-        const qty = qtyMap[item.name];
-        if (qty > 0) mainCount += qty;
-      });
-
-      for (let item of menu) {
+      menu.forEach(item => {
         const qty = qtyMap[item.name];
         if (qty > 0) {
-          const name = item.name;
-          const lname = name.toLowerCase();
-          let unitPrice = item.price;
-
-          if ((lname.includes("kimbap") || lname.includes("bibimbap")) && mainCount >= 2) {
-            unitPrice = 75;
-            notes.push(`${name} → 75B`);
+          const nameLower = item.name.toLowerCase();
+          if (nameLower.includes("kimbap") || nameLower === "bibimbap") {
+            kimbapAndBibimbapQty += qty;
+            hasKimbapOrBibimbap = true;
           }
-
-          if (soupItems.includes(lname) && mainCount >= 1) {
-            unitPrice -= 10;
-            notes.push(`${name} → -10B`);
-          }
-
-          orderItems[name] = qty;
-          totalQty += qty;
-          totalPrice += unitPrice * qty;
-
-          const row = document.createElement('tr');
-          row.innerHTML = `
-            <td>${now}</td><td>${name}</td><td>${qty}</td><td>${unitPrice * qty}</td><td>${selectedPayment}</td>
-          `;
-          logBody.appendChild(row);
         }
-      }
+      });
 
-      const noteRow = document.createElement('tr');
-      noteRow.innerHTML = `<td colspan="5" style="font-size: 12px; color: gray; text-align: left">${notes.join(' / ')}</td>`;
-      logBody.appendChild(noteRow);
+      menu.forEach(item => {
+        const qty = qtyMap[item.name];
+        if (qty > 0) {
+          const nameLower = item.name.toLowerCase();
+          let price = item.price;
+
+          if ((nameLower.includes("kimbap") || nameLower === "bibimbap") && kimbapAndBibimbapQty >= 2) {
+            price = 75;
+            notes.push(`${item.name} → 75B`);
+          } else if (soupItems.includes(item.name) && hasKimbapOrBibimbap) {
+            price -= 10;
+            notes.push(`${item.name} → -10B`);
+          }
+
+          items[item.name] = { qty, unit_price: price };
+          totalQty += qty;
+          totalPrice += price * qty;
+
+          qtyMap[item.name] = 0;
+          document.getElementById(`qty-${item.name}`).innerText = 0;
+        }
+      });
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${now}</td><td>${totalQty} items / ${totalPrice} THB</td><td>${selectedPayment}</td><td>${notes.join('<br>')}</td>
+      `;
+      logBody.appendChild(row);
 
       fetch(sheetURL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          timestamp: new Date().toISOString(),
-          items: JSON.stringify(orderItems),
-          totalQty: totalQty,
-          totalPrice: totalPrice,
+          items,
+          totalQty,
+          totalPrice,
           payment: selectedPayment,
-          notes: notes.join(", ")
+          notes: notes.join(', ')
         })
       });
-
-      for (let item of menu) {
-        qtyMap[item.name] = 0;
-        document.getElementById(`qty-${item.name}`).innerText = 0;
-      }
     }
   </script>
 </body>
