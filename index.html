@@ -33,18 +33,16 @@
     <h2>Sales Log</h2>
     <table>
       <thead>
-        <tr><th>#</th><th>Time</th><th>Item</th><th>Qty</th><th>Total</th><th>Payment</th></tr>
+        <tr><th>No.</th><th>Time</th><th>Item</th><th>Qty</th><th>Total</th><th>Payment</th></tr>
       </thead>
       <tbody id="logBody"></tbody>
     </table>
   </div>
 
   <div class="summary-log">
-    <h2>Daily Summary</h2>
+    <h2>Summary</h2>
     <table>
-      <thead>
-        <tr><th>Item</th><th>Total Sold</th></tr>
-      </thead>
+      <thead><tr><th>Item</th><th>Total Sold</th></tr></thead>
       <tbody id="summaryBody"></tbody>
     </table>
   </div>
@@ -63,11 +61,16 @@
       { name: "Tteokbokki", price: 60 }
     ];
 
+    const discountSoup = {
+      "Kimchi Soup": 40,
+      "Seaweed Soup": 30
+    };
+
     const qtyMap = {};
-    const soldCount = {};
+    const summaryMap = {};
     menu.forEach(item => {
       qtyMap[item.name] = 0;
-      soldCount[item.name] = 0;
+      summaryMap[item.name] = 0;
     });
 
     const sheetURL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec";
@@ -75,7 +78,8 @@
     const menuList = document.getElementById('menuList');
     const logBody = document.getElementById('logBody');
     const summaryBody = document.getElementById('summaryBody');
-    let customerCounter = 1;
+
+    let customerCount = 0;
 
     menu.forEach(item => {
       const div = document.createElement('div');
@@ -96,28 +100,21 @@
       document.getElementById(`qty-${name}`).innerText = qtyMap[name];
     }
 
-    function updateSummary() {
-      summaryBody.innerHTML = '';
-      Object.keys(soldCount).forEach(name => {
-        const row = document.createElement('tr');
-        row.innerHTML = `<td>${name}</td><td>${soldCount[name]}</td>`;
-        summaryBody.appendChild(row);
-      });
-    }
-
     function checkout() {
       let selectedPayment = document.querySelector('input[name="paymentMethod"]:checked').value;
-      let now = new Date();
-      let time = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
-      let itemsSold = false;
+      const now = new Date();
+      const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+      let hasPurchase = false;
+      customerCount++;
 
       menu.forEach(item => {
         const qty = qtyMap[item.name];
-        if (qty > 0) itemsSold = true;
+        if (qty > 0) hasPurchase = true;
       });
 
-      if (!itemsSold) {
+      if (!hasPurchase) {
         alert("Please select at least one item.");
+        customerCount--;
         return;
       }
 
@@ -126,38 +123,31 @@
         if (qty > 0) {
           let price = item.price;
           if ((item.name.includes("Kimbap") || item.name === "Bibimbap") && qty >= 2) price = 75;
-          if ((item.name === "Kimchi Soup" && (qtyMap["Bibimbap"] > 0 || Object.keys(qtyMap).some(k => k.includes("Kimbap") && qtyMap[k] > 0))) ||
-              (item.name === "Seaweed Soup" && (qtyMap["Bibimbap"] > 0 || Object.keys(qtyMap).some(k => k.includes("Kimbap") && qtyMap[k] > 0)))) {
-            price -= 10;
-          }
-          const total = price * qty;
+          if ((item.name in discountSoup) && Object.keys(qtyMap).some(n => (n.includes("Kimbap") || n === "Bibimbap") && qtyMap[n] > 0)) price = discountSoup[item.name];
+          const total = qty * price;
 
           const row = document.createElement('tr');
-          row.innerHTML = `<td>${customerCounter}</td><td>${time}</td><td>${item.name}</td><td>${qty}</td><td>${total}</td><td>${selectedPayment}</td>`;
+          row.innerHTML = `
+            <td>${customerCount}</td><td>${time}</td><td>${item.name}</td><td>${qty}</td><td>${total}</td><td>${selectedPayment}</td>
+          `;
           logBody.appendChild(row);
 
-          soldCount[item.name] += qty;
-
-          fetch(sheetURL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              customer: customerCounter,
-              time: time,
-              item: item.name,
-              qty: qty,
-              unit_price: price,
-              total_price: total,
-              payment: selectedPayment
-            })
-          });
-
+          summaryMap[item.name] += qty;
           qtyMap[item.name] = 0;
           document.getElementById(`qty-${item.name}`).innerText = 0;
         }
       });
+
       updateSummary();
-      customerCounter++;
+    }
+
+    function updateSummary() {
+      summaryBody.innerHTML = "";
+      for (const name in summaryMap) {
+        const row = document.createElement("tr");
+        row.innerHTML = `<td>${name}</td><td>${summaryMap[name]}</td>`;
+        summaryBody.appendChild(row);
+      }
     }
   </script>
 </body>
