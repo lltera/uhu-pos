@@ -14,13 +14,8 @@
     .sales-log table { width: 100%; border-collapse: collapse; }
     .sales-log th, .sales-log td { border: 1px solid #ccc; padding: 8px; text-align: center; }
     .btn { cursor: pointer; padding: 6px 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; margin: 5px; }
-
-    input[type=number]::-webkit-inner-spin-button {
-      -webkit-appearance: auto;
-    }
-    input[type=number] {
-      -moz-appearance: textfield;
-    }
+    .qty-controls { display: flex; align-items: center; gap: 10px; }
+    .qty-btn { width: 30px; height: 30px; font-size: 18px; }
   </style>
 </head>
 <body>
@@ -58,6 +53,9 @@
       { name: "Tteokbokki", price: 60 }
     ];
 
+    const qtyMap = {};
+    menu.forEach(item => qtyMap[item.name] = 0);
+
     const sheetURL = "https://script.google.com/macros/s/AKfycbz8dfRn6lyjW9t0hJmolBEKFUp2jgTwTjoZtTD5N5o-D2pvZK5Ah9FMd6vWovg50vQUfQ/exec";
 
     const menuList = document.getElementById('menuList');
@@ -68,16 +66,25 @@
       div.className = 'menu-item';
       div.innerHTML = `
         <span>${item.name}</span>
-        <input type="number" min="0" value="0" id="qty-${item.name}" style="width:60px;" />
+        <div class="qty-controls">
+          <button class="btn qty-btn" onclick="changeQty('${item.name}', -1)">-</button>
+          <span id="qty-${item.name}">0</span>
+          <button class="btn qty-btn" onclick="changeQty('${item.name}', 1)">+</button>
+        </div>
       `;
       menuList.appendChild(div);
     });
+
+    function changeQty(name, delta) {
+      qtyMap[name] = Math.max(0, qtyMap[name] + delta);
+      document.getElementById(`qty-${name}`).innerText = qtyMap[name];
+    }
 
     function checkout() {
       let selectedPayment = document.querySelector('input[name="paymentMethod"]:checked').value;
       let now = new Date().toLocaleTimeString();
       menu.forEach(item => {
-        const qty = parseInt(document.getElementById(`qty-${item.name}`).value);
+        const qty = qtyMap[item.name];
         if (qty > 0) {
           const price = (item.name.includes("Kimbap") || item.name.includes("Bibimbap")) && qty >= 2 ? 75 : item.price;
           const total = price * qty;
@@ -102,8 +109,9 @@
             })
           });
 
-          // 입력 초기화
-          document.getElementById(`qty-${item.name}`).value = 0;
+          // 초기화
+          qtyMap[item.name] = 0;
+          document.getElementById(`qty-${item.name}`).innerText = 0;
         }
       });
     }
