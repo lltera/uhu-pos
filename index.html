@@ -6,16 +6,18 @@
   <title>POS</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
-    h1 { text-align: center; }
+    h1, h2 { text-align: center; }
     .menu-grid { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; max-width: 600px; margin: 0 auto; }
     .menu-item { flex: 1 1 45%; padding: 5px; border: 1px solid #ccc; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
     .controls { text-align: center; margin-bottom: 20px; }
-    .sales-log, .summary-log { margin-top: 30px; max-width: 600px; margin-left: auto; margin-right: auto; }
-    .sales-log table, .summary-log table { width: 100%; border-collapse: collapse; }
-    .sales-log th, .sales-log td, .summary-log th, .summary-log td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+    .sales-log { margin-top: 30px; max-width: 800px; margin: 30px auto 0; }
+    .sales-log table { width: 100%; border-collapse: collapse; }
+    .sales-log th, .sales-log td { border: 1px solid #ccc; padding: 8px; text-align: center; }
     .btn { cursor: pointer; padding: 6px 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; margin: 2px; font-size: 14px; }
     .qty-controls { display: flex; align-items: center; gap: 5px; }
     .qty-btn { width: 21px; height: 21px; font-size: 12px; }
+    .summary-row { background-color: #f9f9f9; font-weight: bold; cursor: pointer; }
+    .detail-row { display: none; background-color: #fff8dc; }
   </style>
 </head>
 <body>
@@ -33,17 +35,9 @@
     <h2>Sales Log</h2>
     <table>
       <thead>
-        <tr><th>No.</th><th>Time</th><th>Item</th><th>Qty</th><th>Total</th><th>Payment</th></tr>
+        <tr><th>#</th><th>Time</th><th>Items</th><th>Total</th><th>Payment</th></tr>
       </thead>
       <tbody id="logBody"></tbody>
-    </table>
-  </div>
-
-  <div class="summary-log">
-    <h2>Summary</h2>
-    <table>
-      <thead><tr><th>Item</th><th>Total Sold</th></tr></thead>
-      <tbody id="summaryBody"></tbody>
     </table>
   </div>
 
@@ -61,25 +55,12 @@
       { name: "Tteokbokki", price: 60 }
     ];
 
-    const discountSoup = {
-      "Kimchi Soup": 40,
-      "Seaweed Soup": 30
-    };
-
     const qtyMap = {};
-    const summaryMap = {};
-    menu.forEach(item => {
-      qtyMap[item.name] = 0;
-      summaryMap[item.name] = 0;
-    });
-
-    const sheetURL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec";
+    let customerCount = 0;
+    menu.forEach(item => qtyMap[item.name] = 0);
 
     const menuList = document.getElementById('menuList');
     const logBody = document.getElementById('logBody');
-    const summaryBody = document.getElementById('summaryBody');
-
-    let customerCount = 0;
 
     menu.forEach(item => {
       const div = document.createElement('div');
@@ -100,53 +81,62 @@
       document.getElementById(`qty-${name}`).innerText = qtyMap[name];
     }
 
+    function getDiscountedPrice(name, qty) {
+      let basePrice = menu.find(m => m.name === name).price;
+      const isMain = name.includes("Kimbap") || name.includes("Bibimbap");
+      const isSoup = name.includes("Soup");
+
+      if (isMain && qty >= 2) return 75;
+      if (isSoup) {
+        const hasMain = Object.keys(qtyMap).some(k => (k.includes("Kimbap") || k.includes("Bibimbap")) && qtyMap[k] > 0);
+        if (hasMain) return basePrice - 10;
+      }
+      return basePrice;
+    }
+
     function checkout() {
-      let selectedPayment = document.querySelector('input[name="paymentMethod"]:checked').value;
+      const selectedPayment = document.querySelector('input[name="paymentMethod"]:checked').value;
       const now = new Date();
-      const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
-      let hasPurchase = false;
-      customerCount++;
+      const time = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+      let total = 0;
+      let items = [];
+      let details = [];
 
-      menu.forEach(item => {
-        const qty = qtyMap[item.name];
-        if (qty > 0) hasPurchase = true;
-      });
+      for (let key in qtyMap) {
+        const qty = qtyMap[key];
+        if (qty > 0) {
+          const price = getDiscountedPrice(key, qty);
+          const subtotal = price * qty;
+          total += subtotal;
+          items.push(`${key} x${qty}`);
+          details.push(`<li>${key} x${qty} @${price}</li>`);
+        }
+      }
 
-      if (!hasPurchase) {
+      if (items.length === 0) {
         alert("Please select at least one item.");
-        customerCount--;
         return;
       }
 
-      menu.forEach(item => {
-        const qty = qtyMap[item.name];
-        if (qty > 0) {
-          let price = item.price;
-          if ((item.name.includes("Kimbap") || item.name === "Bibimbap") && qty >= 2) price = 75;
-          if ((item.name in discountSoup) && Object.keys(qtyMap).some(n => (n.includes("Kimbap") || n === "Bibimbap") && qtyMap[n] > 0)) price = discountSoup[item.name];
-          const total = qty * price;
+      customerCount++;
 
-          const row = document.createElement('tr');
-          row.innerHTML = `
-            <td>${customerCount}</td><td>${time}</td><td>${item.name}</td><td>${qty}</td><td>${total}</td><td>${selectedPayment}</td>
-          `;
-          logBody.appendChild(row);
+      const summaryRow = document.createElement('tr');
+      summaryRow.className = 'summary-row';
+      summaryRow.innerHTML = `<td>${customerCount}</td><td>${time}</td><td>${items.join(", ")}</td><td>${total}</td><td>${selectedPayment}</td>`;
+      summaryRow.onclick = () => {
+        detailRow.style.display = detailRow.style.display === 'none' ? 'table-row' : 'none';
+      };
 
-          summaryMap[item.name] += qty;
-          qtyMap[item.name] = 0;
-          document.getElementById(`qty-${item.name}`).innerText = 0;
-        }
-      });
+      const detailRow = document.createElement('tr');
+      detailRow.className = 'detail-row';
+      detailRow.innerHTML = `<td colspan="5"><ul>${details.join('')}</ul></td>`;
 
-      updateSummary();
-    }
+      logBody.appendChild(summaryRow);
+      logBody.appendChild(detailRow);
 
-    function updateSummary() {
-      summaryBody.innerHTML = "";
-      for (const name in summaryMap) {
-        const row = document.createElement("tr");
-        row.innerHTML = `<td>${name}</td><td>${summaryMap[name]}</td>`;
-        summaryBody.appendChild(row);
+      for (let key in qtyMap) {
+        qtyMap[key] = 0;
+        document.getElementById(`qty-${key}`).innerText = 0;
       }
     }
   </script>
