@@ -16,6 +16,7 @@
     .btn { cursor: pointer; padding: 6px 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; margin: 2px; font-size: 14px; }
     .qty-controls { display: flex; align-items: center; gap: 5px; }
     .qty-btn { width: 21px; height: 21px; font-size: 12px; }
+    #customerCount { text-align: center; font-weight: bold; margin-top: 10px; }
   </style>
 </head>
 <body>
@@ -25,6 +26,7 @@
     <label><input type="radio" name="paymentMethod" value="Online"> Online</label>
     <br>
     <button class="btn" onclick="checkout()">Sell</button>
+    <div id="customerCount">Customers today: 0</div>
   </div>
 
   <div class="menu-grid" id="menuList"></div>
@@ -33,7 +35,7 @@
     <h2>Sales Log</h2>
     <table>
       <thead>
-        <tr><th>Time</th><th>Summary</th><th>Payment</th><th>Notes</th></tr>
+        <tr><th>Time</th><th>Item</th><th>Qty</th><th>Total</th><th>Payment</th><th>Note</th></tr>
       </thead>
       <tbody id="logBody"></tbody>
     </table>
@@ -53,6 +55,7 @@
       { name: "Tteokbokki", price: 60 }
     ];
 
+    let customerCount = 0;
     const qtyMap = {};
     menu.forEach(item => qtyMap[item.name] = 0);
 
@@ -60,6 +63,7 @@
 
     const menuList = document.getElementById('menuList');
     const logBody = document.getElementById('logBody');
+    const customerCountDiv = document.getElementById('customerCount');
 
     menu.forEach(item => {
       const div = document.createElement('div');
@@ -81,69 +85,72 @@
     }
 
     function checkout() {
-      const selectedPayment = document.querySelector('input[name="paymentMethod"]:checked').value;
-      const now = new Date().toLocaleTimeString();
-
-      const items = {};
+      let selectedPayment = document.querySelector('input[name="paymentMethod"]:checked').value;
+      let now = new Date().toLocaleTimeString();
       let totalQty = 0;
       let totalPrice = 0;
+      let items = {};
       let notes = [];
 
-      let kimbapAndBibimbapQty = 0;
-      const soupItems = ["Kimchi Soup", "Seaweed Soup"];
-      let hasKimbapOrBibimbap = false;
+      const kimbapOrBibimbapCount = Object.keys(qtyMap)
+        .filter(name => name.toLowerCase().includes("kimbap") || name.toLowerCase().includes("bibimbap"))
+        .reduce((sum, name) => sum + qtyMap[name], 0);
 
       menu.forEach(item => {
         const qty = qtyMap[item.name];
         if (qty > 0) {
-          const nameLower = item.name.toLowerCase();
-          if (nameLower.includes("kimbap") || nameLower === "bibimbap") {
-            kimbapAndBibimbapQty += qty;
-            hasKimbapOrBibimbap = true;
-          }
-        }
-      });
+          let unitPrice = item.price;
 
-      menu.forEach(item => {
-        const qty = qtyMap[item.name];
-        if (qty > 0) {
-          const nameLower = item.name.toLowerCase();
-          let price = item.price;
-
-          if ((nameLower.includes("kimbap") || nameLower === "bibimbap") && kimbapAndBibimbapQty >= 2) {
-            price = 75;
+          if ((item.name.toLowerCase().includes("kimbap") || item.name.toLowerCase().includes("bibimbap")) && kimbapOrBibimbapCount >= 2) {
+            unitPrice = 75;
             notes.push(`${item.name} → 75B`);
-          } else if (soupItems.includes(item.name) && hasKimbapOrBibimbap) {
-            price -= 10;
+          }
+
+          if ((item.name.toLowerCase().includes("kimchi soup") || item.name.toLowerCase().includes("seaweed")) && kimbapOrBibimbapCount >= 1) {
+            unitPrice -= 10;
             notes.push(`${item.name} → -10B`);
           }
 
-          items[item.name] = { qty, unit_price: price };
+          const itemTotal = unitPrice * qty;
           totalQty += qty;
-          totalPrice += price * qty;
+          totalPrice += itemTotal;
+          items[item.name] = qty;
 
-          qtyMap[item.name] = 0;
-          document.getElementById(`qty-${item.name}`).innerText = 0;
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${now}</td><td>${item.name}</td><td>${qty}</td><td>${itemTotal}</td><td>${selectedPayment}</td><td></td>
+          `;
+          logBody.appendChild(row);
         }
       });
 
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>${now}</td><td>${totalQty} items / ${totalPrice} THB</td><td>${selectedPayment}</td><td>${notes.join('<br>')}</td>
-      `;
-      logBody.appendChild(row);
+      if (totalQty > 0) {
+        customerCount++;
+        customerCountDiv.innerText = `Customers today: ${customerCount}`;
 
-      fetch(sheetURL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items,
-          totalQty,
-          totalPrice,
-          payment: selectedPayment,
-          notes: notes.join(', ')
-        })
-      });
+        const noteRow = document.createElement('tr');
+        noteRow.innerHTML = `
+          <td colspan="6">Note: ${notes.join(" / ")}</td>
+        `;
+        logBody.appendChild(noteRow);
+
+        fetch(sheetURL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: items,
+            totalQty: totalQty,
+            totalPrice: totalPrice,
+            payment: selectedPayment,
+            notes: notes.join(" / ")
+          })
+        });
+
+        Object.keys(qtyMap).forEach(name => {
+          qtyMap[name] = 0;
+          document.getElementById(`qty-${name}`).innerText = 0;
+        });
+      }
     }
   </script>
 </body>
