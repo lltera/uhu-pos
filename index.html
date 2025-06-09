@@ -9,12 +9,11 @@
     .menu-grid { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; max-width: 600px; margin: 0 auto; }
     .menu-item { flex: 1 1 45%; padding: 5px; border: 1px solid #ccc; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
     .controls { text-align: center; margin-bottom: 20px; }
-    .sales-log { margin-top: 30px; max-width: 600px; margin: 30px auto 0; }
-    .sales-log table { width: 100%; border-collapse: collapse; }
-    .sales-log th, .sales-log td { border: 1px solid #ccc; padding: 8px; text-align: center; }
     .btn { cursor: pointer; padding: 6px 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; margin: 2px; font-size: 14px; }
     .qty-controls { display: flex; align-items: center; gap: 5px; }
     .qty-btn { width: 21px; height: 21px; font-size: 12px; }
+    .sales-log table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
   </style>
 </head>
 <body>
@@ -27,6 +26,16 @@
   </div>
 
   <div class="menu-grid" id="menuList"></div>
+
+  <div class="sales-log">
+    <h2>Sales Log</h2>
+    <table>
+      <thead>
+        <tr><th>Time</th><th>Summary</th><th>Qty</th><th>Total</th><th>Payment</th><th>Note</th></tr>
+      </thead>
+      <tbody id="logBody"></tbody>
+    </table>
+  </div>
 
   <script>
     const menu = [
@@ -48,6 +57,7 @@
     const sheetURL = "https://script.google.com/macros/s/AKfycbz8dfRn6lyjW9t0hJmolBEKFUp2jgTwTjoZtTD5N5o-D2pvZK5Ah9FMd6vWovg50vQUfQ/exec";
 
     const menuList = document.getElementById('menuList');
+    const logBody = document.getElementById('logBody');
 
     menu.forEach(item => {
       const div = document.createElement('div');
@@ -69,59 +79,77 @@
     }
 
     function checkout() {
-      let selectedPayment = document.querySelector('input[name="paymentMethod"]:checked').value;
-      let itemsToLog = [];
-      let note = "";
+      const selectedPayment = document.querySelector('input[name="paymentMethod"]:checked').value;
+      const now = new Date().toLocaleTimeString();
+      const items = [];
+      let totalQty = 0;
+      let totalPrice = 0;
+      let discountNote = [];
 
-      let totalKimbapBibimbapQty = 0;
-      let hasKimbapOrBibimbap = false;
-      let hasSoup = false;
-
+      // Count kimbap & bibimbap total for discount
+      let kimbapQty = 0;
       menu.forEach(item => {
-        const qty = qtyMap[item.name];
-        if (qty > 0) {
-          const isKimbapOrBibimbap = item.name.includes("Kimbap") || item.name.includes("Bibimbap");
-          const isSoup = item.name.includes("Soup");
-          if (isKimbapOrBibimbap) {
-            totalKimbapBibimbapQty += qty;
-            hasKimbapOrBibimbap = true;
-          }
-          if (isSoup) hasSoup = true;
+        if (item.name.includes("Kimbap") || item.name === "Bibimbap") {
+          kimbapQty += qtyMap[item.name];
         }
       });
 
+      // Calculate items
       menu.forEach(item => {
         const qty = qtyMap[item.name];
         if (qty > 0) {
           let price = item.price;
-          const isKimbapOrBibimbap = item.name.includes("Kimbap") || item.name.includes("Bibimbap");
-          const isSoup = item.name.includes("Soup");
+          let note = '';
 
-          if (isKimbapOrBibimbap && totalKimbapBibimbapQty >= 2) price = 75;
-          if (isSoup && hasKimbapOrBibimbap) price -= 10;
+          // Kimbap/Bibimbap 할인 적용
+          if ((item.name.includes("Kimbap") || item.name === "Bibimbap") && kimbapQty >= 2) {
+            price = 75;
+            note = 'discounted';
+            discountNote.push(`${item.name}`);
+          }
 
-          itemsToLog.push({
-            item: item.name,
-            qty: qty,
-            unit_price: price,
-            total_price: price * qty
-          });
+          // Soup discount 적용
+          if ((item.name === "Kimchi Soup" || item.name === "Seaweed Soup") && kimbapQty > 0) {
+            price -= 10;
+            note = 'combo';
+            discountNote.push(`${item.name}`);
+          }
 
-          qtyMap[item.name] = 0;
-          document.getElementById(`qty-${item.name}`).innerText = 0;
+          const total = price * qty;
+          items.push({ name: item.name, qty: qty, unit_price: price, total_price: total });
+          totalQty += qty;
+          totalPrice += total;
         }
       });
 
-      if (itemsToLog.length === 0) return;
+      if (items.length === 0) {
+        alert("Please select at least one item.");
+        return;
+      }
 
+      const summary = items.map(item => `${item.name} x${item.qty}`).join(", ");
+      const note = discountNote.length > 0 ? `Discount: ${discountNote.join(", ")}` : "";
+
+      // Display on log
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${now}</td><td>${summary}</td><td>${totalQty}</td><td>${totalPrice}</td><td>${selectedPayment}</td><td>${note}</td>`;
+      logBody.appendChild(row);
+
+      // Send to Google Sheets
       fetch(sheetURL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: itemsToLog,
+          items: items,
           payment: selectedPayment,
           note: note
         })
+      });
+
+      // Reset quantities
+      menu.forEach(item => {
+        qtyMap[item.name] = 0;
+        document.getElementById(`qty-${item.name}`).innerText = 0;
       });
     }
   </script>
