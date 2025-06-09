@@ -6,7 +6,6 @@
   <title>POS</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
-    h1 { text-align: center; }
     .menu-grid { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; max-width: 600px; margin: 0 auto; }
     .menu-item { flex: 1 1 45%; padding: 5px; border: 1px solid #ccc; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
     .controls { text-align: center; margin-bottom: 20px; }
@@ -29,16 +28,6 @@
 
   <div class="menu-grid" id="menuList"></div>
 
-  <div class="sales-log">
-    <h2>Sales Log</h2>
-    <table>
-      <thead>
-        <tr><th>Time</th><th>Items</th><th>Qty</th><th>Total</th><th>Payment</th><th>Note</th></tr>
-      </thead>
-      <tbody id="logBody"></tbody>
-    </table>
-  </div>
-
   <script>
     const menu = [
       { name: "Mix Kimbap", price: 79 },
@@ -59,7 +48,6 @@
     const sheetURL = "https://script.google.com/macros/s/AKfycbz8dfRn6lyjW9t0hJmolBEKFUp2jgTwTjoZtTD5N5o-D2pvZK5Ah9FMd6vWovg50vQUfQ/exec";
 
     const menuList = document.getElementById('menuList');
-    const logBody = document.getElementById('logBody');
 
     menu.forEach(item => {
       const div = document.createElement('div');
@@ -82,82 +70,59 @@
 
     function checkout() {
       let selectedPayment = document.querySelector('input[name="paymentMethod"]:checked').value;
-      let now = new Date().toLocaleTimeString();
+      let itemsToLog = [];
+      let note = "";
 
-      let totalQty = 0;
-      let totalPrice = 0;
-      let items = {};
-      let noteLines = [];
-      let kimbapCount = 0;
-      let bibimbapCount = 0;
+      let totalKimbapBibimbapQty = 0;
+      let hasKimbapOrBibimbap = false;
+      let hasSoup = false;
 
-      for (let name in qtyMap) {
-        const qty = qtyMap[name];
-        if (qty === 0) continue;
-
-        const isKimbap = name.toLowerCase().includes("kimbap");
-        const isBibimbap = name.toLowerCase().includes("bibimbap");
-        const isSoup = name.toLowerCase().includes("soup");
-
-        if (isKimbap) kimbapCount += qty;
-        if (isBibimbap) bibimbapCount += qty;
-
-        items[name] = qty;
-      }
-
-      for (let name in items) {
-        const qty = items[name];
-        const basePrice = menu.find(m => m.name === name).price;
-        let price = basePrice;
-
-        if ((name.toLowerCase().includes("kimbap") || name.toLowerCase().includes("bibimbap")) && (kimbapCount + bibimbapCount) >= 2) {
-          price = 75;
-          if (price !== basePrice) noteLines.push(`${name} → 75B`);
+      menu.forEach(item => {
+        const qty = qtyMap[item.name];
+        if (qty > 0) {
+          const isKimbapOrBibimbap = item.name.includes("Kimbap") || item.name.includes("Bibimbap");
+          const isSoup = item.name.includes("Soup");
+          if (isKimbapOrBibimbap) {
+            totalKimbapBibimbapQty += qty;
+            hasKimbapOrBibimbap = true;
+          }
+          if (isSoup) hasSoup = true;
         }
+      });
 
-        if (name.toLowerCase().includes("kimchi soup") && (kimbapCount + bibimbapCount) > 0) {
-          price -= 10;
-          noteLines.push(`${name} → -10B`);
+      menu.forEach(item => {
+        const qty = qtyMap[item.name];
+        if (qty > 0) {
+          let price = item.price;
+          const isKimbapOrBibimbap = item.name.includes("Kimbap") || item.name.includes("Bibimbap");
+          const isSoup = item.name.includes("Soup");
+
+          if (isKimbapOrBibimbap && totalKimbapBibimbapQty >= 2) price = 75;
+          if (isSoup && hasKimbapOrBibimbap) price -= 10;
+
+          itemsToLog.push({
+            item: item.name,
+            qty: qty,
+            unit_price: price,
+            total_price: price * qty
+          });
+
+          qtyMap[item.name] = 0;
+          document.getElementById(`qty-${item.name}`).innerText = 0;
         }
+      });
 
-        if (name.toLowerCase().includes("seaweed soup") && (kimbapCount + bibimbapCount) > 0) {
-          price -= 10;
-          noteLines.push(`${name} → -10B`);
-        }
-
-        totalQty += qty;
-        totalPrice += price * qty;
-      }
-
-      const note = noteLines.join(" / ");
-
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>${now}</td>
-        <td>${Object.entries(items).map(([name, qty]) => `${name} x${qty}`).join(", ")}</td>
-        <td>${totalQty}</td>
-        <td>${totalPrice}</td>
-        <td>${selectedPayment}</td>
-        <td>${note}</td>
-      `;
-      logBody.appendChild(row);
+      if (itemsToLog.length === 0) return;
 
       fetch(sheetURL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: items,
-          totalQty: totalQty,
-          totalPrice: totalPrice,
+          items: itemsToLog,
           payment: selectedPayment,
-          notes: note
+          note: note
         })
       });
-
-      for (let name in qtyMap) {
-        qtyMap[name] = 0;
-        document.getElementById(`qty-${name}`).innerText = 0;
-      }
     }
   </script>
 </body>
